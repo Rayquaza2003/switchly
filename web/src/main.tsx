@@ -19,8 +19,11 @@ function App() {
         <Link to="/" className="brand">
           Switchly
         </Link>
-        <span className="muted">{me.data.email}</span>
-        <button className="quiet" onClick={() => api("POST", "/auth/logout").then(me.reload)}>
+        <nav aria-label="Main">
+          <Link to="/">Projects</Link>
+        </nav>
+        <span className="muted small">{me.data.email}</span>
+        <button className="ghost small" onClick={() => api("POST", "/auth/logout").then(me.reload)}>
           Sign out
         </button>
       </header>

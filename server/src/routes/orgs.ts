@@ -24,7 +24,7 @@ async function createEnvironment(db: pg.Pool | pg.PoolClient, projectId: string,
     // clock_timestamp(), not now(): environments created in one transaction must keep their creation order.
     `insert into environments (project_id, name, sdk_key_hash, sdk_key_prefix, created_at)
      values ($1, $2, $3, $4, clock_timestamp())
-     returning id, name, sdk_key_prefix as "sdkKeyPrefix"`,
+     returning id, name, sdk_key_prefix as "sdkKeyPrefix", requires_approval as "requiresApproval", frozen`,
     [projectId, envName, hash, sdkKeyPrefix],
   );
   return { ...rows[0], sdkKey };
@@ -115,7 +115,7 @@ orgs.post("/orgs/:orgId/projects", requireRole("owner", "org"), async (req, res)
 orgs.get("/projects/:projectId", requireRole("viewer", "project"), async (req, res) => {
   const [project] = await q(`select id, name, org_id as "orgId" from projects where id = $1`, [req.params.projectId]);
   const environments = await q(
-    `select id, name, sdk_key_prefix as "sdkKeyPrefix" from environments where project_id = $1 order by created_at, name`,
+    `select id, name, sdk_key_prefix as "sdkKeyPrefix", requires_approval as "requiresApproval", frozen from environments where project_id = $1 order by created_at, name`,
     [req.params.projectId],
   );
   res.json({ ...project, role: res.locals.role, environments });

@@ -10,15 +10,20 @@ interface Org {
 
 /** Shown once, right after keys are created or rotated. The server cannot show them again. */
 export function NewKeys({ environments }: { environments: Environment[] }) {
+  const [copied, setCopied] = useState("");
   if (!environments.length) return null;
+  const copy = (env: Environment) => navigator.clipboard.writeText(env.sdkKey!).then(() => setCopied(env.id));
   return (
-    <div className="notice" role="status">
-      <strong>Copy these SDK keys now. They are not shown again.</strong>
+    <div className="panel" role="status">
+      <p className="hazard">Copy these SDK keys now. They are not shown again.</p>
       <dl className="keys">
         {environments.map((env) => (
           <div key={env.id}>
             <dt>{env.name}</dt>
             <dd><code>{env.sdkKey}</code></dd>
+            <button className="ghost small" onClick={() => copy(env)}>
+              {copied === env.id ? "Copied" : "Copy"}
+            </button>
           </div>
         ))}
       </dl>
@@ -34,7 +39,7 @@ function NameForm({ label, action, onSubmit }: { label: string; action: string; 
     if (await run(() => onSubmit(new FormData(form).get("name") as string))) form.reset();
   }
   return (
-    <form onSubmit={submit} className="inline">
+    <form onSubmit={submit} className="foot inline">
       <label>
         {label}
         <input name="name" required maxLength={100} />
@@ -63,48 +68,51 @@ function Members({ org }: { org: Org }) {
   return (
     <section>
       <h2>Members</h2>
-      <ul className="rows">
-        {members.data?.map((m) => (
-          <li key={m.id}>
-            <span className="grow">{m.email}</span>
-            {owner ? (
-              <>
-                <select aria-label={`Role for ${m.email}`} value={m.role} onChange={(e) => setRole(m.email, e.target.value)}>
-                  <option value="viewer">Viewer</option>
-                  <option value="editor">Editor</option>
-                  <option value="owner">Owner</option>
-                </select>
-                <button
-                  className="quiet"
-                  onClick={() => run(() => api("DELETE", `/orgs/${org.id}/members/${m.id}`)).then(members.reload)}
-                >
-                  Remove
-                </button>
-              </>
-            ) : (
-              <span className="muted">{m.role}</span>
-            )}
-          </li>
-        ))}
-      </ul>
-      {error && <p className="error" role="alert">{error}</p>}
-      {owner && (
-        <form onSubmit={add} className="inline">
-          <label>
-            Add a member by email
-            <input name="email" type="email" required />
-          </label>
-          <label>
-            Role
-            <select name="role" defaultValue="editor">
-              <option value="viewer">Viewer: can look</option>
-              <option value="editor">Editor: can change flags</option>
-              <option value="owner">Owner: can manage everything</option>
-            </select>
-          </label>
-          <button type="submit">Add member</button>
-        </form>
-      )}
+      <div className="panel">
+        <ul className="rows">
+          {members.data?.map((m) => (
+            <li key={m.id}>
+              <span className="grow">{m.email}</span>
+              {owner ? (
+                <>
+                  <select aria-label={`Role for ${m.email}`} value={m.role} onChange={(e) => setRole(m.email, e.target.value)}>
+                    <option value="viewer">Viewer</option>
+                    <option value="editor">Editor</option>
+                    <option value="owner">Owner</option>
+                  </select>
+                  <button
+                    className="ghost small"
+                    onClick={() => run(() => api("DELETE", `/orgs/${org.id}/members/${m.id}`)).then(members.reload)}
+                  >
+                    Remove
+                  </button>
+                </>
+              ) : (
+                <span className="muted">{m.role}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+        {owner && (
+          <form onSubmit={add} className="foot inline">
+            <label>
+              Add a member by email
+              <input name="email" type="email" required />
+            </label>
+            <label>
+              Role
+              <select name="role" defaultValue="editor">
+                <option value="viewer">Viewer: can look</option>
+                <option value="editor">Editor: can change flags</option>
+                <option value="owner">Owner: can manage everything</option>
+              </select>
+            </label>
+            <button type="submit">Add member</button>
+            {error && <p className="error" role="alert">{error}</p>}
+          </form>
+        )}
+      </div>
+      {!owner && error && <p className="error" role="alert">{error}</p>}
     </section>
   );
 }
@@ -123,18 +131,20 @@ function OrgView({ org }: { org: Org }) {
     <>
       <section>
         <h2>Projects</h2>
-        {projects.data?.length === 0 && (
-          <p className="muted">No projects yet. A project holds the flags for one app or service.</p>
-        )}
-        <ul className="rows">
-          {projects.data?.map((p) => (
-            <li key={p.id}>
-              <Link to={`/projects/${p.id}`} className="grow">{p.name}</Link>
-            </li>
-          ))}
-        </ul>
+        <div className="panel">
+          {projects.data?.length === 0 && (
+            <p className="empty">No projects yet. A project holds the flags for one app or service.</p>
+          )}
+          <ul className="rows">
+            {projects.data?.map((p) => (
+              <li key={p.id} className="go">
+                <Link to={`/projects/${p.id}`}>{p.name}</Link>
+              </li>
+            ))}
+          </ul>
+          {org.role === "owner" && <NameForm label="New project name" action="Create project" onSubmit={createProject} />}
+        </div>
         <NewKeys environments={newKeys} />
-        {org.role === "owner" && <NameForm label="New project name" action="Create project" onSubmit={createProject} />}
       </section>
       <Members org={org} />
     </>
@@ -159,11 +169,13 @@ export function Home() {
   if (!orgs.data) return null;
   if (!org) {
     return (
-      <section>
+      <>
         <h1>Create your organization</h1>
         <p className="muted">Projects, flags and teammates live inside an organization.</p>
-        <NameForm label="Organization name" action="Create organization" onSubmit={createOrg} />
-      </section>
+        <section className="panel">
+          <NameForm label="Organization name" action="Create organization" onSubmit={createOrg} />
+        </section>
+      </>
     );
   }
 
@@ -181,8 +193,10 @@ export function Home() {
       </div>
       <OrgView org={org} key={org.id} />
       <details>
-        <summary>Create another organization</summary>
-        <NameForm label="Organization name" action="Create organization" onSubmit={createOrg} />
+        <summary className="muted">Create another organization</summary>
+        <div className="panel" style={{ marginTop: "0.75rem" }}>
+          <NameForm label="Organization name" action="Create organization" onSubmit={createOrg} />
+        </div>
       </details>
     </>
   );

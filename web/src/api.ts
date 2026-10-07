@@ -1,16 +1,29 @@
 import { useCallback, useEffect, useState } from "react";
 
 export type Role = "viewer" | "editor" | "owner";
+export type Op = "is" | "is_not" | "contains" | "starts_with" | "ends_with" | "gte" | "lte" | "in_segment" | "not_in_segment";
+export interface Condition {
+  attribute: string;
+  op: Op;
+  values: string[];
+}
+export interface Rule {
+  conditions: Condition[];
+  percentage: number;
+}
 export interface FlagConfig {
   enabled: boolean;
   rolloutPercentage: number;
   targetedUsers: string[];
+  rules: Rule[];
 }
 export interface Flag {
   id: string;
   key: string;
   description: string;
   projectId: string;
+  createdAt: string;
+  lastCheckedAt: string | null;
   configs: Record<string, FlagConfig>;
 }
 export interface Environment {
@@ -18,7 +31,60 @@ export interface Environment {
   name: string;
   sdkKeyPrefix: string;
   sdkKey?: string;
+  requiresApproval: boolean;
+  frozen: boolean;
 }
+export interface Segment {
+  id: string;
+  name: string;
+  conditions: Condition[];
+}
+export interface RolloutPlan {
+  steps: { percentage: number; waitMinutes: number }[];
+  maxErrorRate: number | null;
+  minSamples: number;
+}
+export interface Rollout extends RolloutPlan {
+  id: string;
+  currentStep: number;
+  nextStepAt: string;
+  status: "running" | "completed" | "cancelled" | "rolled_back";
+  finishedAt: string | null;
+}
+export interface Change {
+  id: string;
+  flagId: string;
+  flagKey: string;
+  environmentId: string;
+  environment: string;
+  config: FlagConfig | null;
+  rollout: RolloutPlan | null;
+  note: string;
+  scheduledAt: string | null;
+  status: "pending_approval" | "scheduled";
+  requestedBy: string | null;
+  mine: boolean;
+}
+export interface Overview {
+  rollout: Rollout | null;
+  changes: Change[];
+  stats: { on: number; off: number; ok: number; failed: number };
+}
+
+/**
+ * Drops half-typed blanks and fixes key order, so a rule list can be sent to the server and
+ * compared with the saved one. (Postgres returns JSON keys in its own order.)
+ */
+export const cleanConditions = (conditions: Condition[]): Condition[] =>
+  conditions.map((c) => ({
+    attribute: c.op.endsWith("segment") ? "" : c.attribute.trim(),
+    op: c.op,
+    values: c.values.map((v) => v.trim()).filter(Boolean),
+  }));
+export const cleanRules = (rules: Rule[]): Rule[] =>
+  rules.map((r) => ({ conditions: cleanConditions(r.conditions), percentage: r.percentage }));
+export const incomplete = (conditions: Condition[]) =>
+  !conditions.length || cleanConditions(conditions).some((c) => !c.values.length || (!c.attribute && !c.op.endsWith("segment")));
 export interface Project {
   id: string;
   name: string;

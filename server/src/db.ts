@@ -1,9 +1,8 @@
 import { readdir, readFile } from "node:fs/promises";
 import pg from "pg";
 
-export const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL ?? "postgres://localhost/switchly",
-});
+export const connectionString = process.env.DATABASE_URL ?? "postgres://localhost/switchly";
+export const pool = new pg.Pool({ connectionString });
 
 export const q = <T extends pg.QueryResultRow = any>(text: string, params?: unknown[]) =>
   pool.query<T>(text, params).then((r) => r.rows);

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
+import { configSchema, notify, setConfig } from "../config";
 import { HttpError, q, tx } from "../db";
-import { configCols, type FlagConfig } from "../evaluate";
 import { requireRole } from "../tenancy";
 
 const newFlag = z.object({
@@ -9,58 +9,19 @@ const newFlag = z.object({
   description: z.string().trim().max(500).default(""),
 });
 
-const configSchema = z.object({
-  enabled: z.boolean(),
-  rolloutPercentage: z.number().int().min(0).max(100),
-  targetedUsers: z
-    .array(z.string().trim().min(1).max(200))
-    .max(10_000)
-    .transform((users) => [...new Set(users)]),
-});
-
 // One row per flag, with `configs` keyed by environment id.
-const flagSelect = `select f.id, f.key, f.description, f.project_id as "projectId",
+// lastCheckedAt: last time any app reported checking the flag, in any environment.
+const flagSelect = `select f.id, f.key, f.description, f.project_id as "projectId", f.created_at as "createdAt",
+    (select max(s.minute) from flag_stats s where s.flag_id = f.id) as "lastCheckedAt",
     coalesce(json_object_agg(e.id, json_build_object(
       'enabled', coalesce(c.enabled, false),
       'rolloutPercentage', coalesce(c.rollout_percentage, 0),
-      'targetedUsers', coalesce(c.targeted_users, '{}'::text[])
+      'targetedUsers', coalesce(c.targeted_users, '{}'::text[]),
+      'rules', coalesce(c.rules, '[]'::jsonb)
     )) filter (where e.id is not null), '{}') as configs
   from flags f
   left join environments e on e.project_id = f.project_id
   left join flag_configs c on c.flag_id = f.id and c.environment_id = e.id`;
-
-/**
- * The only writer of flag_configs. Config change and its audit row commit together,
- * and the flag row lock keeps concurrent edits from recording a stale `before`.
- */
-async function setConfig(flagId: string, environmentId: string, config: FlagConfig, actorId: string, action: string) {
-  return tx(async (c) => {
-    const { rows } = await c.query(
-      `select p.org_id, p.id as project_id, f.key, ${configCols}
-       from flags f
-       join projects p on p.id = f.project_id
-       join environments e on e.project_id = p.id and e.id = $2
-       left join flag_configs c on c.flag_id = f.id and c.environment_id = e.id
-       where f.id = $1 for update of f`,
-      [flagId, environmentId],
-    );
-    if (!rows[0]) throw new HttpError(404, "Not found");
-    const { org_id, project_id, key, ...before } = rows[0];
-    await c.query(
-      `insert into flag_configs (flag_id, environment_id, enabled, rollout_percentage, targeted_users)
-       values ($1, $2, $3, $4, $5)
-       on conflict (flag_id, environment_id) do update set enabled = excluded.enabled,
-         rollout_percentage = excluded.rollout_percentage, targeted_users = excluded.targeted_users, updated_at = now()`,
-      [flagId, environmentId, config.enabled, config.rolloutPercentage, config.targetedUsers],
-    );
-    await c.query(
-      `insert into audit_log (org_id, project_id, flag_id, flag_key, environment_id, actor_user_id, action, before, after)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [org_id, project_id, flagId, key, environmentId, actorId, action, before, config],
-    );
-    return config;
-  });
-}
 
 export const flags = Router();
 
@@ -80,6 +41,7 @@ flags.post("/projects/:projectId/flags", requireRole("editor", "project"), async
        values ($1, $2, $3, $4, $5, 'flag.created')`,
       [res.locals.orgId, req.params.projectId, rows[0].id, body.key, res.locals.user.id],
     );
+    await notify(c, req.params.projectId as string);
     return rows[0];
   });
   res.status(201).json(flag);
@@ -103,13 +65,25 @@ flags.delete("/flags/:flagId", requireRole("editor", "flag"), async (req, res) =
       `insert into audit_log (org_id, project_id, flag_key, actor_user_id, action) values ($1, $2, $3, $4, 'flag.deleted')`,
       [res.locals.orgId, rows[0].project_id, rows[0].key, res.locals.user.id],
     );
+    await notify(c, rows[0].project_id);
   });
   res.json({});
 });
 
 flags.put("/flags/:flagId/environments/:environmentId", requireRole("editor", "flag"), async (req, res) => {
   const config = configSchema.parse(req.body);
-  res.json(await setConfig(req.params.flagId as string, req.params.environmentId as string, config, res.locals.user.id, "config.updated"));
+  res.json(
+    await tx((c) =>
+      setConfig(c, {
+        flagId: req.params.flagId as string,
+        environmentId: req.params.environmentId as string,
+        config,
+        actorId: res.locals.user.id,
+        action: "config.updated",
+        by: "user",
+      }),
+    ),
+  );
 });
 
 flags.get("/projects/:projectId/audit", requireRole("viewer", "project"), async (req, res) => {
@@ -134,6 +108,16 @@ flags.post("/audit/:auditId/revert", requireRole("editor", "audit"), async (req,
   if (!entry.flag_id || !entry.environment_id || !entry.before) {
     throw new HttpError(400, "This entry cannot be reverted");
   }
-  const config = configSchema.parse(entry.before);
-  res.json(await setConfig(entry.flag_id, entry.environment_id, config, res.locals.user.id, "config.reverted"));
+  res.json(
+    await tx((c) =>
+      setConfig(c, {
+        flagId: entry.flag_id,
+        environmentId: entry.environment_id,
+        config: configSchema.parse(entry.before),
+        actorId: res.locals.user.id,
+        action: "config.reverted",
+        by: "user",
+      }),
+    ),
+  );
 });

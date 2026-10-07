@@ -6,6 +6,7 @@ import { HttpError } from "./db";
 import { auth } from "./routes/auth";
 import { flags } from "./routes/flags";
 import { orgs } from "./routes/orgs";
+import { releases } from "./routes/releases";
 import { sdk } from "./routes/sdk";
 
 // CSRF defence for the cookie-authenticated API, on top of SameSite=Lax and JSON-only bodies:
@@ -21,6 +22,8 @@ const sameOrigin: RequestHandler = (req, _res, next) => {
 };
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+  // A stream that fails after its first write cannot change status any more.
+  if (res.headersSent) return void res.end();
   if (err instanceof ZodError) {
     const message = err.issues.map((i) => [i.path.join("."), i.message].filter(Boolean).join(": ")).join("; ");
     return void res.status(400).json({ error: message });
@@ -39,5 +42,5 @@ if (process.env.TRUST_PROXY) app.set("trust proxy", Number(process.env.TRUST_PRO
 app.use("/sdk", sdk);
 app.use("/api", express.json({ limit: "1mb" }), cookieParser(), sameOrigin);
 app.use("/api/auth", auth);
-app.use("/api", requireUser, orgs, flags);
+app.use("/api", requireUser, orgs, flags, releases);
 app.use(errorHandler);

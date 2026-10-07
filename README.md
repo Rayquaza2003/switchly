@@ -22,19 +22,37 @@ Create a project in the dashboard, copy the SDK key for an environment, then:
 ```ts
 import { createClient } from "@switchly/sdk";
 
-const flags = createClient({ sdkKey: "sw_…", userId: currentUser.id, baseUrl: "http://localhost:3000" });
+const flags = createClient({
+  sdkKey: "sw_…",
+  userId: currentUser.id,
+  baseUrl: "http://localhost:3000",
+  attributes: { country: "IN", plan: "pro", appVersion: "2.4.0" }, // optional, for targeting rules
+});
 await flags.ready();
 
 if (flags.isEnabled("new-checkout")) {
-  // new code path
+  try {
+    runNewCheckout();
+    flags.report("new-checkout", true);
+  } catch (err) {
+    flags.report("new-checkout", false); // feeds the automatic switch-off
+    throw err;
+  }
 }
 ```
+
+The SDK keeps a stream open, so changes arrive within a second; it falls back to polling every 10 seconds when the stream drops. It also reports how often each flag is checked, which the dashboard shows and uses to spot flags no app asks about any more.
 
 Or without the SDK:
 
 ```sh
 curl -H "Authorization: sw_…" "http://localhost:3000/sdk/flags?userId=user-123"
 # {"flags":{"new-checkout":true}}
+
+# with attributes (URL-encoded JSON), and as a live stream:
+curl -G -H "Authorization: sw_…" "http://localhost:3000/sdk/flags" \
+  --data-urlencode "userId=user-123" --data-urlencode 'attributes={"country":"IN"}'
+curl -N -H "Authorization: sw_…" "http://localhost:3000/sdk/stream?userId=user-123"
 ```
 
 ## How a flag is decided
@@ -43,9 +61,23 @@ Per environment, in this order:
 
 1. Flag switched off: off for everyone.
 2. User id is in the selected users list: on.
-3. Otherwise on for a stable `rolloutPercentage` share of users. A user keeps the same slot per flag, so raising the percentage only adds users.
+3. First targeting rule whose conditions all match the user's attributes: on for that rule's share of matching users. Conditions compare an attribute (`is`, `is not`, `contains`, `starts with`, `ends with`, `is at least`, `is at most`) or test membership of a segment. `userId` is always available as an attribute.
+4. Otherwise on for a stable `rolloutPercentage` share of users. A user keeps the same slot per flag, so raising the percentage only adds users.
 
-A change reaches SDK clients on their next poll (10 seconds by default). Every change is recorded in the flag's history, and any entry can be undone from there.
+Every change is recorded in the flag's history, and any entry can be undone from there.
+
+## Release controls
+
+- **Segments**: named groups of users (for example "Beta testers: email ends with @acme.com") that any flag's rules can use.
+- **Stepped rollout**: a plan such as 5, 25, 50, 100 with a hold time per step. Switchly widens the flag on schedule. Any manual change stops the rollout.
+- **Automatic switch-off**: give a rollout a failure limit. When the share of `report(key, false)` calls passes it, the flag switches off by itself.
+- **Approval**: an owner can mark an environment "Needs approval". Changes there become requests that a second editor or owner approves.
+- **Scheduling**: any change can be set to apply at a later time.
+- **Freeze**: an owner can freeze an environment. Rollouts and scheduled changes pause until it is unfrozen.
+
+Switching a flag off is never blocked: not by approval, not by a freeze.
+
+The server checks rollouts and scheduled changes every 5 seconds, so those act within 5 seconds of their time.
 
 ## Roles
 

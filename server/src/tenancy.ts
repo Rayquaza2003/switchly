@@ -10,6 +10,10 @@ const orgOf = {
   environment: "select p.org_id from environments e join projects p on p.id = e.project_id where e.id = $1",
   flag: "select p.org_id from flags f join projects p on p.id = f.project_id where f.id = $1",
   audit: "select org_id from audit_log where id = $1",
+  segment: "select p.org_id from segments s join projects p on p.id = s.project_id where s.id = $1",
+  change: "select org_id from change_requests where id = $1",
+  rollout:
+    "select p.org_id from rollouts r join flags f on f.id = r.flag_id join projects p on p.id = f.project_id where r.id = $1",
 };
 
 /**
