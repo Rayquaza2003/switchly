@@ -79,6 +79,26 @@ Switching a flag off is never blocked: not by approval, not by a freeze.
 
 The server checks rollouts and scheduled changes every 5 seconds, so those act within 5 seconds of their time.
 
+## Deploying branches to instances
+
+A project can get a **Deploy** tab: pick a branch per environment, deploy it as a Docker container, watch status and log, roll back to the previous good commit. Editors and owners can deploy; a frozen environment refuses deploys.
+
+Deploying runs `git` and `docker` on the machine the Switchly server runs on, so it is switched on per project by whoever runs the server, in `server/deploy.config.json` (path overridable with `DEPLOY_CONFIG`), never from the dashboard:
+
+```json
+{
+  "<project id>": {
+    "repo": "/absolute/path/to/git/repository",
+    "switchlyUrl": "http://localhost:3000",
+    "instances": {
+      "staging": { "port": 4002, "container": "shop-staging", "sdkKey": "sw_…" }
+    }
+  }
+}
+```
+
+The repository needs a `Dockerfile` at its root whose container listens on port 8080 (`containerPort` to change). Each container is started with `SWITCHLY_SDK_KEY`, `SWITCHLY_URL`, `ENVIRONMENT`, `BRANCH` and `PORT` set. Only committed code is deployed. `demo/` holds a working example; see `demo/README.md`.
+
 ## Roles
 
 - Viewer: read everything.

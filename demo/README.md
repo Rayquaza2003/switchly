@@ -17,7 +17,13 @@ node demo/setup.mjs       # once: creates project "Corner Coffee shop", saves SD
 demo/deploy.sh            # builds and starts all three instances
 ```
 
-Deploy one branch to one instance: `demo/deploy.sh <branch> <environment> <port>`, for example `demo/deploy.sh feature/new-checkout production 4001` to "release" the checkout branch to production with its flag still off.
+## Deploy from the dashboard
+
+Project "Corner Coffee shop" has a **Deploy** tab: source branches on the left, one card per instance on the right. Pick a branch in an instance's card and press Deploy. The card shows progress, the build log under "Details", what is running now, and a "Roll back to …" button that redeploys the previous good commit.
+
+`node demo/setup.mjs` is what enables the tab: it writes `server/deploy.config.json`, which tells the Switchly server where the shop repository is and which port and SDK key each instance uses.
+
+From a terminal instead: `demo/deploy.sh <branch> <environment> <port>`, for example `demo/deploy.sh feature/new-checkout production 4001` to "release" the checkout branch to production with its flag still off.
 
 Stop everything: `docker rm -f shop-production shop-staging shop-development`, then `colima stop`.
 

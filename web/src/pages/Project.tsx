@@ -6,6 +6,7 @@ import {
 } from "../api";
 import { ChangesList, ConditionsEditor, describeConditions } from "./FlagPanels";
 import { NewKeys } from "./Home";
+import { Pipeline, type PipelineData } from "./Pipeline";
 
 // ponytail: production is recognised by name. Add an explicit flag on environments if teams name it differently.
 export const isProduction = (name: string) => /^prod/i.test(name);
@@ -162,6 +163,7 @@ export function ProjectPage() {
   const flags = useLoad(() => api<Flag[]>("GET", `/projects/${projectId}/flags`), [projectId]);
   const segments = useLoad(() => api<Segment[]>("GET", `/projects/${projectId}/segments`), [projectId]);
   const changes = useLoad(() => api<Change[]>("GET", `/projects/${projectId}/changes`), [projectId]);
+  const pipeline = useLoad(() => api<PipelineData>("GET", `/projects/${projectId}/pipeline`), [projectId]);
   const [error, run] = useAction();
   const [newKeys, setNewKeys] = useState<Environment[]>([]);
 
@@ -236,6 +238,8 @@ export function ProjectPage() {
         current={tab}
         tabs={[
           ["flags", `Flags${flags.data ? ` (${flags.data.length})` : ""}`],
+          // Shown only for projects the server operator has connected to a repository.
+          ...(pipeline.data?.enabled ? [["deploy", "Deploy"] as [string, string]] : []),
           ["segments", `Segments${segments.data ? ` (${segments.data.length})` : ""}`],
           ["environments", "Environments"],
         ]}
@@ -311,6 +315,10 @@ export function ProjectPage() {
             </section>
           )}
         </>
+      )}
+
+      {tab === "deploy" && pipeline.data?.enabled && (
+        <Pipeline data={pipeline.data} reload={pipeline.reload} editable={editable} />
       )}
 
       {tab === "segments" && (

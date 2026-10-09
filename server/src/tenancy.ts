@@ -12,6 +12,7 @@ const orgOf = {
   audit: "select org_id from audit_log where id = $1",
   segment: "select p.org_id from segments s join projects p on p.id = s.project_id where s.id = $1",
   change: "select org_id from change_requests where id = $1",
+  deployment: "select p.org_id from deployments d join projects p on p.id = d.project_id where d.id = $1",
   rollout:
     "select p.org_id from rollouts r join flags f on f.id = r.flag_id join projects p on p.id = f.project_id where r.id = $1",
 };

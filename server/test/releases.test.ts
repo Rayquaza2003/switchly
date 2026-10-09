@@ -255,6 +255,12 @@ test("the SDK receives changes over the stream and reports usage", async () => {
   assert.ok(listed.lastCheckedAt, "flag list shows when an app last checked the flag");
 });
 
+test("deploying is off for projects the server operator has not configured", async () => {
+  assert.deepEqual((await alice("GET", `/api/projects/${projectId}/pipeline`)).body, { enabled: false });
+  assert.equal((await alice("POST", `/api/environments/${envs.staging.id}/deploy`, { branch: "main" })).status, 400);
+  assert.equal((await alice("POST", `/api/environments/${envs.staging.id}/deploy`, {})).status, 400);
+});
+
 test("new routes keep other tenants out", async () => {
   const carol = client();
   await carol("POST", "/api/auth/signup", { email: "carol@example.com", password: "another pass" });
@@ -262,5 +268,7 @@ test("new routes keep other tenants out", async () => {
   assert.equal((await carol("GET", `/api/projects/${projectId}/changes`)).status, 404);
   assert.equal((await carol("GET", `/api/flags/${flagId}/environments/${envs.staging.id}/overview`)).status, 404);
   assert.equal((await carol("PATCH", `/api/environments/${envs.staging.id}`, { frozen: true })).status, 404);
+  assert.equal((await carol("GET", `/api/projects/${projectId}/pipeline`)).status, 404);
+  assert.equal((await carol("POST", `/api/environments/${envs.staging.id}/deploy`, { branch: "main" })).status, 404);
   assert.equal((await carol("POST", `/api/flags/${flagId}/environments/${envs.staging.id}/rollout`, { steps: [{ percentage: 5, waitMinutes: 1 }] })).status, 404);
 });

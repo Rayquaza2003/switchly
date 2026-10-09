@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import { requireUser } from "./auth";
 import { HttpError } from "./db";
 import { auth } from "./routes/auth";
+import { deploy } from "./routes/deploy";
 import { flags } from "./routes/flags";
 import { orgs } from "./routes/orgs";
 import { releases } from "./routes/releases";
@@ -42,5 +43,5 @@ if (process.env.TRUST_PROXY) app.set("trust proxy", Number(process.env.TRUST_PRO
 app.use("/sdk", sdk);
 app.use("/api", express.json({ limit: "1mb" }), cookieParser(), sameOrigin);
 app.use("/api/auth", auth);
-app.use("/api", requireUser, orgs, flags, releases);
+app.use("/api", requireUser, orgs, flags, releases, deploy);
 app.use(errorHandler);
